@@ -102,10 +102,18 @@ const GetstashedFrontend = () => {
   };
 
   // Formatting displayed balance
-  const formatBalance = (balanceInMist) => {
-    const balanceInSui = BigInt(balanceInMist) / ONE_SUI;
-    return balanceInSui.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 5 });
-  };
+const formatBalance = (balanceInMist) => {
+  const balanceInSuiBigInt = BigInt(balanceInMist);
+  const integerPart = balanceInSuiBigInt / ONE_SUI;
+  const fractionalPart = balanceInSuiBigInt % ONE_SUI;
+  
+  const fractionalStr = fractionalPart.toString().padStart(9, '0');
+  const decimalPlaces = 5;
+  
+  const formattedFractional = fractionalStr.slice(0, decimalPlaces);
+  
+  return `${integerPart.toLocaleString('en-US')}.${formattedFractional}`;
+};
 
   return (
     <div className="min-h-screen bg-gray-100 py-6 flex flex-col justify-center sm:py-12">
