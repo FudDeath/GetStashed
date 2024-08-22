@@ -1,6 +1,6 @@
 /* global BigInt */
 import React, { useState, useEffect } from 'react';
-import { ZkSendLinkBuilder, createZkSendTransaction } from '@mysten/zksend';
+import { ZkSendLinkBuilder } from '@mysten/zksend';
 import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
 import { ConnectButton, useWalletKit } from '@mysten/wallet-kit';
 import { ClipboardIcon, DownloadIcon, AlertTriangle } from 'lucide-react';
@@ -58,8 +58,7 @@ const GetstashedFrontend = () => {
         links.push(link);
       }
 
-      const tx = await createZkSendTransaction({ links });
-      
+     const tx = await ZkSendLinkBuilder.createLinks({ links });      
       const result = await signAndExecuteTransactionBlock({
         transactionBlock: tx,
       });
