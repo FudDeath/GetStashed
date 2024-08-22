@@ -2,7 +2,7 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SuiClientProvider, WalletProvider, createNetworkConfig, ConnectButton, ConnectModal, lightTheme } from '@mysten/dapp-kit';
 import { getFullnodeUrl } from '@mysten/sui.js/client';
-import GetstashedFrontend from './GetstashedFrontend'; // Adjust the import path as necessary
+import GetstashedFrontend from './GetstashedFrontend.js'; // Adjust the import path as necessary
 import '@mysten/dapp-kit/dist/index.css';
 
 // Customizing the light theme
