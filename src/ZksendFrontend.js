@@ -8,11 +8,6 @@ import { ClipboardIcon, DownloadIcon, AlertTriangleIcon } from 'lucide-react';
 const ONE_SUI = BigInt(1000000000); // 1 SUI = 1,000,000,000 MIST
 const MAX_LINKS = 100;
 
-// Utility function to wait for transaction
-const waitForTx = async ({ suiClient, digest }) => {
-  await suiClient.waitForTransactionBlock({ digest });
-};
-
 const GetstashedFrontend = () => {
   const [numLinks, setNumLinks] = useState(1);
   const [amountPerLink, setAmountPerLink] = useState('0.1');
@@ -68,14 +63,11 @@ const GetstashedFrontend = () => {
       const urls = links.map((link) => link.getLink().replace('zksend.com', 'getstashed.com'));
 
       const tx = await ZkSendLinkBuilder.createLinks({ links });
-      const result = await signAndExecuteTransactionBlock({ transactionBlock: tx });
-
-      // Wait for the transaction to be indexed
-      await waitForTx({ suiClient: client, digest: result.digest });
+      await signAndExecuteTransactionBlock({ transactionBlock: tx });
 
       setGeneratedLinks(urls);
 
-      // Refresh balance after waiting for the transaction to be indexed
+      // Refresh balance after
       const { totalBalance } = await client.getBalance({
         owner: currentAccount.address,
       });
@@ -109,7 +101,7 @@ const GetstashedFrontend = () => {
     document.body.removeChild(element);
   };
 
-  // Format balance for display
+  // Formatting displayed balance
   const formatBalance = (balanceInMist) => {
     const balanceInSui = BigInt(balanceInMist) / ONE_SUI;
     return balanceInSui.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 5 });
