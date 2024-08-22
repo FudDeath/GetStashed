@@ -2,8 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { ZkSendLinkBuilder } from '@mysten/zksend';
 import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
-import { ConnectButton, useCurrentAccount, useSuiClient } from '@mysten/dapp-kit';
-import { useSignAndExecuteTransactionBlock } from '@mysten/dapp-kit';
+import { ConnectButton, useCurrentAccount, useSuiClient, useSignAndExecuteTransactionBlock } from '@mysten/dapp-kit';
 import { ClipboardIcon, DownloadIcon, AlertTriangleIcon } from 'lucide-react';
 
 const ONE_SUI = BigInt(1000000000); // 1 SUI = 1,000,000,000 MIST
