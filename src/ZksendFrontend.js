@@ -14,7 +14,7 @@ const GetstashedFrontend = () => {
   const [generatedLinks, setGeneratedLinks] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [balance, setBalance] = useState('0'); // Store balance as string
+  const [balance, setBalance] = useState(null);
   const [copySuccess, setCopySuccess] = useState('');
 
   const { currentAccount, signAndExecuteTransactionBlock } = useWalletKit();
@@ -60,7 +60,7 @@ const GetstashedFrontend = () => {
       }
 
       const urls = links.map((link) => link.getLink().replace('zksend.com', 'getstashed.com'));
-
+      
       const tx = await ZkSendLinkBuilder.createLinks({ links });
       await signAndExecuteTransactionBlock({ transactionBlock: tx });
 
