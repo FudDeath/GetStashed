@@ -63,20 +63,9 @@ const GetstashedFrontend = () => {
       const urls = links.map((link) => link.getLink().replace('zksend.com', 'getstashed.com'));
 
       const tx = await ZkSendLinkBuilder.createLinks({ links });
-      
-      signTransaction(
-        {
-          transaction: tx,
-        },
-        {
-          onSuccess: async (result) => {
-            const response = await suiClient.executeTransactionBlock({
-              transactionBlock: result.transactionBlockBytes,
-              signature: result.signature,
-            });
-            await suiClient.waitForTransactionBlock({ digest: response.digest });
-            setGeneratedLinks(urls);
+      await signAndExecuteTransactionBlock({ transactionBlock: tx });
 
+      setGeneratedLinks(urls);
             // Refresh balance after transaction is processed
             const { totalBalance } = await suiClient.getBalance({
               owner: currentAccount.address,
