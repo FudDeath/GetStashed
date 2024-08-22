@@ -1,7 +1,6 @@
 /* global BigInt */
 import React, { useState, useEffect } from 'react';
 import { ZkSendLinkBuilder } from '@mysten/zksend';
-import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
 import { ConnectButton, useCurrentAccount, useSuiClient, useSignTransaction } from '@mysten/dapp-kit';
 import { ClipboardIcon, DownloadIcon, AlertTriangleIcon } from 'lucide-react';
 
@@ -17,14 +16,15 @@ const GetstashedFrontend = () => {
   const [balance, setBalance] = useState('0'); // Store balance as string
   const [copySuccess, setCopySuccess] = useState('');
 
-  const { currentAccount, signAndExecuteTransactionBlock } = useWalletKit();
-  const client = new SuiClient({ url: getFullnodeUrl("mainnet") });
+  const currentAccount = useCurrentAccount();
+  const suiClient = useSuiClient();
+  const { mutate: signTransaction } = useSignTransaction();
 
   useEffect(() => {
     const fetchBalance = async () => {
       if (currentAccount) {
         try {
-          const { totalBalance } = await client.getBalance({
+          const { totalBalance } = await suiClient.getBalance({
             owner: currentAccount.address,
           });
           setBalance(totalBalance.toString()); // Store as string
@@ -36,7 +36,7 @@ const GetstashedFrontend = () => {
     };
 
     fetchBalance();
-  }, [currentAccount]);
+  }, [currentAccount, suiClient]);
 
   const createLinks = async () => {
     if (!currentAccount) {
@@ -54,7 +54,7 @@ const GetstashedFrontend = () => {
       for (let i = 0; i < numLinksToCreate; i++) {
         const link = new ZkSendLinkBuilder({
           sender: currentAccount.address,
-          client,
+          client: suiClient,
         });
         link.addClaimableMist(amountInMist);
         links.push(link);
@@ -63,19 +63,37 @@ const GetstashedFrontend = () => {
       const urls = links.map((link) => link.getLink().replace('zksend.com', 'getstashed.com'));
 
       const tx = await ZkSendLinkBuilder.createLinks({ links });
-      await signAndExecuteTransactionBlock({ transactionBlock: tx });
+      
+      signTransaction(
+        {
+          transaction: tx,
+        },
+        {
+          onSuccess: async (result) => {
+            const response = await suiClient.executeTransactionBlock({
+              transactionBlock: result.transactionBlockBytes,
+              signature: result.signature,
+            });
+            await suiClient.waitForTransactionBlock({ digest: response.digest });
+            setGeneratedLinks(urls);
 
-      setGeneratedLinks(urls);
-
-      // Refresh balance after
-      const { totalBalance } = await client.getBalance({
-        owner: currentAccount.address,
-      });
-      setBalance(totalBalance.toString());
+            // Refresh balance after transaction is processed
+            const { totalBalance } = await suiClient.getBalance({
+              owner: currentAccount.address,
+            });
+            setBalance(totalBalance.toString());
+            setIsLoading(false);
+          },
+          onError: (error) => {
+            console.error("Error creating links:", error);
+            setError('An error occurred while creating links. Please try again.');
+            setIsLoading(false);
+          },
+        }
+      );
     } catch (error) {
       console.error("Error creating links:", error);
       setError('An error occurred while creating links. Please try again.');
-    } finally {
       setIsLoading(false);
     }
   };
