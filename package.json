@@ -4,7 +4,7 @@
   "private": true,
   "dependencies": {
     "@mysten/sui.js": "^0.51.0",
-    "@mysten/wallet-kit": "^0.8.2",
+    "@mysten/dapp-kit": "*",
     "@mysten/zksend": "^0.10.6",
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",
