@@ -1,21 +1,19 @@
 /* global BigInt */
 import React, { useState, useEffect } from 'react';
-import { ZkSendLinkBuilder } from '@mysten/zksend';
+import { ZkSendLinkBuilder, createZkSendTransaction } from '@mysten/zksend';
 import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
 import { ConnectButton, useWalletKit } from '@mysten/wallet-kit';
-import { ClipboardIcon, DownloadIcon, AlertTriangleIcon } from 'lucide-react';
+import { ClipboardIcon, DownloadIcon, AlertTriangle } from 'lucide-react';
 
-const ONE_SUI = BigInt(1000000000); // 1 SUI = 1,000,000,000 MIST
-const MAX_LINKS = 100;
+const ONE_SUI = 1000000000n; // 1 SUI = 1,000,000,000 MIST
 
 const GetstashedFrontend = () => {
   const [numLinks, setNumLinks] = useState(1);
-  const [amountPerLink, setAmountPerLink] = useState(0.1);
+  const [amountPerLink, setAmountPerLink] = useState('0.1');
   const [generatedLinks, setGeneratedLinks] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [balance, setBalance] = useState(null);
-  const [copySuccess, setCopySuccess] = useState('');
+  const [balance, setBalance] = useState('0'); // Store balance as string
 
   const { currentAccount, signAndExecuteTransactionBlock } = useWalletKit();
   const client = new SuiClient({ url: getFullnodeUrl("mainnet") });
@@ -27,7 +25,7 @@ const GetstashedFrontend = () => {
           const { totalBalance } = await client.getBalance({
             owner: currentAccount.address,
           });
-          setBalance(Number(totalBalance) / Number(ONE_SUI));
+          setBalance(totalBalance.toString()); // Store as string
         } catch (error) {
           console.error("Error fetching balance:", error);
           setError('Failed to fetch balance. Please try again.');
@@ -48,35 +46,46 @@ const GetstashedFrontend = () => {
     setError('');
     try {
       const links = [];
-      const numLinksToCreate = Math.min(numLinks, MAX_LINKS);
+      const numLinksToCreate = Math.min(numLinks, 100);
+      const amountInMist = BigInt(Math.floor(parseFloat(amountPerLink) * Number(ONE_SUI)));
 
       for (let i = 0; i < numLinksToCreate; i++) {
         const link = new ZkSendLinkBuilder({
           sender: currentAccount.address,
           client,
         });
-        link.addClaimableMist(BigInt(Math.floor(amountPerLink * 1000000000)));
+        link.addClaimableMist(amountInMist);
         links.push(link);
       }
 
-      const urls = links.map((link) => link.getLink().replace('zksend.com', 'getstashed.com'));
+      const tx = await createZkSendTransaction({ links });
       
-      const tx = await ZkSendLinkBuilder.createLinks({ links });
-      await signAndExecuteTransactionBlock({ transactionBlock: tx });
+      const result = await signAndExecuteTransactionBlock({
+        transactionBlock: tx,
+      });
 
+      console.log("Transaction result:", result);
+
+      const urls = links.map((link) => link.getLink().replace('zksend.com', 'getstashed.com'));
       setGeneratedLinks(urls);
 
       // Refresh balance after creating links
       const { totalBalance } = await client.getBalance({
         owner: currentAccount.address,
       });
-      setBalance(Number(totalBalance) / Number(ONE_SUI));
+      setBalance(totalBalance.toString());
     } catch (error) {
       console.error("Error creating links:", error);
       setError('An error occurred while creating links. Please try again.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Format balance for display
+  const formatBalance = (balanceInMist) => {
+    const balanceInSui = BigInt(balanceInMist) / ONE_SUI;
+    return balanceInSui.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 5 });
   };
 
   const copyAllLinks = () => {
