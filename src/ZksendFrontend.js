@@ -125,7 +125,7 @@ const GetstashedFrontend = () => {
                 {currentAccount && (
                   <div className="text-sm text-gray-600">
                     <p>Connected: {currentAccount.address.slice(0, 6)}...{currentAccount.address.slice(-4)}</p>
-                    <p>Balance: {balance !== null ? `${balance.toFixed(4)} SUI` : 'Loading...'}</p>
+                    <p>Balance: {formatBalance(balance)} SUI</p>
                   </div>
                 )}
                 <div>
