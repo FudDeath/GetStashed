@@ -1,0 +1,21 @@
+/* Custom styles for the Create Links button */
+button {
+    background-color: #1a73e8;
+    color: #fff;
+    border-radius: 8px;
+    padding: 5px 10px;
+    font-size: 16px;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #00FF00;
+}
+
+/* Additional padding for better spacing */
+label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
