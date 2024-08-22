@@ -4,12 +4,13 @@
   "private": true,
   "dependencies": {
     "@mysten/sui.js": "^0.51.0",
-    "@mysten/wallet-kit": "^0.8.2",
+    "@mysten/dapp-kit": "^0.14.9",
     "@mysten/zksend": "^0.10.6",
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
+    "@tanstack/react-query": "*",
     "typescript": "^4.9.5"
   },
   "scripts": {
