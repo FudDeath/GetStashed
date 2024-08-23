@@ -1,9 +1,9 @@
 /* global BigInt */
 import React, { useState, useEffect } from 'react';
-import { ZkSendLinkBuilder } from '@mysten/zksend';
+import { ZkSendLinkBuilder, ZkSendLink } from '@mysten/zksend';
 import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
 import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
-import { ClipboardIcon, DownloadIcon, AlertTriangleIcon } from 'lucide-react';
+import { ClipboardIcon, DownloadIcon, AlertTriangleIcon, UploadIcon } from 'lucide-react';
 import './styles.css';                      // Load custom styles afterwards
 
 const ONE_SUI = BigInt(1000000000); // 1 SUI = 1,000,000,000 MIST
@@ -17,6 +17,12 @@ const GetstashedFrontend = () => {
     const [error, setError] = useState('');
     const [balance, setBalance] = useState(null);
     const [copySuccess, setCopySuccess] = useState('');
+    const [uploadedLinks, setUploadedLinks] = useState([]);
+    const [isClaimLoading, setIsClaimLoading] = useState(false);    
+    const [claimResults, setClaimResults] = useState([]);   
+    const [claimProgress, setClaimProgress] = useState(0);
+    const [claimSummary, setClaimSummary] = useState(null);
+    
 
     const currentAccount = useCurrentAccount();
     const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
@@ -119,91 +125,214 @@ const GetstashedFrontend = () => {
         document.body.removeChild(element);
     };
 
-    return (
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center py-6 sm:py-12">
-            <div className="bg-white shadow-lg sm:rounded-3xl px-8 py-10 sm:p-20 w-full max-w-md">
-                <h1 className="text-2xl font-semibold text-center mb-6">Getstashed Bulk Link Generator</h1>
-                <div className="space-y-4">
-                    <div className="text-center mb-4">
-                        <ConnectButton />
-                    </div>
-                    {balance !== null && (
-                        <div className="text-center text-sm text-gray-600 mb-4">
-                            <p>Connected: 0x{currentAccount?.address.slice(2, 6)}...{currentAccount?.address.slice(-4)}</p>
-                            <p>Balance: {balance.toFixed(4)} SUI</p>
-                        </div>
-                    )}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">
-                            Number of Links (max 100):
-                            <input
-                                type="number"
-                                value={numLinks}
-                                onChange={(e) => setNumLinks(Math.min(parseInt(e.target.value) || 1, MAX_LINKS))}
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                            />
-                        </label>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">
-                            Amount per Link (in SUI):
-                            <input
-                                type="number"
-                                value={amountPerLink}
-                                onChange={(e) => setAmountPerLink(parseFloat(e.target.value) || 0)}
-                                step="0.1"
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                            />
-                        </label>
-                    </div>
-                    <div className="flex justify-center mt-6">
-                        <button
-                            onClick={createLinks}
-                            disabled={isLoading || !currentAccount}
-                            className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                        >
-                            {isLoading ? 'Creating...' : 'Create Links'}
+
+    const handleFileUpload = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                const links = content.split('\n').map(link => link.trim()).filter(link => link.length > 0);
+                setUploadedLinks(links);
+            };
+            reader.readAsText(file);
+        }
+    };
+
+    const convertBigIntToString = (obj) => {
+        return JSON.parse(JSON.stringify(obj, (key, value) =>
+            typeof value === 'bigint' ? value.toString() : value
+        ));
+    };
+
+    const massClaimAssets = async () => {
+        if (!currentAccount) {
+            setError('Please connect your wallet first.');
+            return;
+        }
+
+        setIsClaimLoading(true);
+        setError('');
+        setClaimProgress([]);
+        const results = [];
+        let successfulClaims = 0;
+
+        for (let i = 0; i < uploadedLinks.length; i++) {
+            const linkUrl = uploadedLinks[i];
+            setClaimProgress(prev => [...prev, `Claiming link ${i + 1}...`]);
+            try {
+                const link = await ZkSendLink.fromUrl(linkUrl);
+                const { balances } = link.assets;
+                const claimResult = await link.claimAssets(currentAccount.address);
+                
+                const suiBalance = balances.find(b => b.coinType === "0x2::sui::SUI");
+                const suiAmount = suiBalance ? Number(suiBalance.amount) / Number(ONE_SUI) : 0;
+
+                results.push({
+                    link: linkUrl,
+                    claimedAmount: suiAmount.toFixed(4),
+                });
+                successfulClaims++;
+                setClaimProgress(prev => [...prev, `Link ${i + 1} claimed successfully: ${suiAmount.toFixed(4)} SUI`]);
+            } catch (error) {
+                console.error(`Error claiming assets from link ${linkUrl}:`, error);
+                results.push({
+                    link: linkUrl,
+                    error: error.message,
+                });
+                setClaimProgress(prev => [...prev, `Error claiming link ${i + 1}: ${error.message}`]);
+            }
+        }
+
+        setClaimResults(results);
+        setClaimSummary(`Successfully claimed ${successfulClaims} out of ${uploadedLinks.length} links.`);
+        setIsClaimLoading(false);
+    };
+    
+
+return (
+    <div className="min-h-screen bg-gray-100 p-4">
+        <div className="max-w-3xl mx-auto bg-white rounded-lg shadow-md p-6">
+            <h1 className="text-2xl font-bold mb-6 text-center">Getstashed Bulk Link Generator</h1>
+            
+            <div className="mb-6 flex justify-center">
+                <ConnectButton />
+            </div>
+            
+            {currentAccount && (
+                <div className="mb-6 text-center">
+                    <p className="text-sm text-gray-600">Connected: 0x{currentAccount.address.slice(2, 6)}...{currentAccount.address.slice(-4)}</p>
+                    <p className="text-sm text-gray-600">Balance: {balance !== null ? `${balance.toFixed(4)} SUI` : 'Loading...'}</p>
+                </div>
+            )}
+
+            <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Number of Links (max 100):
+                    <input
+                        type="number"
+                        value={numLinks}
+                        onChange={(e) => setNumLinks(Math.min(parseInt(e.target.value) || 1, MAX_LINKS))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                    />
+                </label>
+            </div>
+            <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Amount per Link (in SUI):
+                    <input
+                        type="number"
+                        value={amountPerLink}
+                        onChange={(e) => setAmountPerLink(parseFloat(e.target.value) || 0)}
+                        step="0.1"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                    />
+                </label>
+            </div>
+            <button 
+                onClick={createLinks} 
+                disabled={isLoading || !currentAccount}
+                className="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+                {isLoading ? 'Creating...' : 'Create Links'}
+            </button>
+
+            {error && <p className="mt-2 text-red-500 text-sm">{error}</p>}
+
+            {generatedLinks.length > 0 && (
+                <div className="mt-8">
+                    <h2 className="text-xl font-semibold mb-4">Generated Links</h2>
+                    <div className="flex space-x-2 mb-4">
+                        <button onClick={copyAllLinks} className="flex items-center bg-green-500 text-white py-2 px-4 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                            <ClipboardIcon className="w-5 h-5 mr-2" /> Copy All
+                        </button>
+                        <button onClick={downloadLinks} className="flex items-center bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                            <DownloadIcon className="w-5 h-5 mr-2" /> Download
                         </button>
                     </div>
-                    {error && <p className="text-red-500 text-center text-sm mt-2">{error}</p>}
-                </div>
-                {generatedLinks.length > 0 && (
-                    <div className="mt-8">
-                        <h2 className="text-xl font-semibold mb-4 text-center">Generated Links</h2>
-                        <div className="flex justify-between mb-4">
-                            <button onClick={copyAllLinks} className="flex items-center bg-green-500 text-white px-3 py-2 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 text-sm">
-                                <ClipboardIcon className="w-4 h-4 mr-2" />
-                                Copy All
-                            </button>
-                            <button onClick={downloadLinks} className="flex items-center bg-blue-500 text-white px-3 py-2 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-sm">
-                                <DownloadIcon className="w-4 h-4 mr-2" />
-                                Download
-                            </button>
-                        </div>
-                        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
-                            <div className="flex items-center text-yellow-600 mb-2">
-                                <AlertTriangleIcon className="w-5 h-5 mr-2" />
-                                <p className="text-sm text-yellow-700">
-                                    Save these links before closing or refreshing the page. This data will be lost otherwise.
-                                </p>
-                            </div>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-md max-h-60 overflow-y-auto">
-                            <ul className="list-disc pl-5 text-sm text-gray-600 space-y-2">
-                                {generatedLinks.map((link, index) => (
-                                    <li key={index}>
-                                        <a href={link} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">
-                                            {link}
-                                        </a>
-                                    </li>
-                                ))}
-                            </ul>
+                    <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4">
+                        <div className="flex">
+                            <AlertTriangleIcon className="w-5 h-5 mr-2" />
+                            <p>Save these links before closing or refreshing the page. This data will be lost otherwise.</p>
                         </div>
                     </div>
-                )}
+                    <ul className="list-disc pl-5 space-y-1">
+                        {generatedLinks.map((link, index) => (
+                            <li key={index}>
+                                <a href={link} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">{link}</a>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            <div className="mt-8">
+                <h2 className="text-xl font-semibold mb-4">Mass Claim Assets</h2>
+                <div className="flex items-center space-x-2 mb-4">
+                    <input 
+                        type="file" 
+                        accept=".txt" 
+                        onChange={handleFileUpload}
+                        className="block w-full text-sm text-gray-500
+                            file:mr-4 file:py-2 file:px-4
+                            file:rounded-md file:border-0
+                            file:text-sm file:font-semibold
+                            file:bg-blue-50 file:text-blue-700
+                            hover:file:bg-blue-100"
+                    />
+                    <button 
+                        onClick={massClaimAssets} 
+                        disabled={isClaimLoading || !currentAccount || uploadedLinks.length === 0}
+                        className="flex items-center bg-green-500 text-white py-2 px-4 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                        <UploadIcon className="w-5 h-5 mr-2" /> {isClaimLoading ? 'Claiming...' : 'Claim Assets'}
+                    </button>
+                </div>
             </div>
+
+            {uploadedLinks.length > 0 && (
+                <div className="mt-4">
+                    <p className="text-sm text-gray-600">{uploadedLinks.length} links loaded</p>
+                </div>
+            )}
+
+            {isClaimLoading && (
+                <div className="mt-4">
+                    <p className="text-sm font-semibold text-gray-700 mb-2">Claiming in progress...</p>
+                    <div className="bg-gray-100 p-4 rounded-md max-h-60 overflow-y-auto">
+                        {claimProgress.map((progress, index) => (
+                            <p key={index} className="text-sm text-gray-700">{progress}</p>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {claimSummary && (
+                <div className="mt-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700">
+                    <p className="font-semibold">{claimSummary}</p>
+                </div>
+            )}
+
+            {claimResults.length > 0 && (
+                <div className="mt-8">
+                    <h3 className="text-lg font-semibold mb-4">Claim Results</h3>
+                    <ul className="space-y-2">
+                        {claimResults.map((result, index) => (
+                            <li key={index} className="bg-gray-50 p-3 rounded-md">
+                                <p className="text-sm text-gray-600">Link {index + 1}: {result.link}</p>
+                                {result.error ? (
+                                    <p className="text-sm text-red-500">Error: {result.error}</p>
+                                ) : (
+                                    <p className="text-sm font-semibold text-green-600">Claimed: {result.claimedAmount} SUI</p>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
         </div>
-    );
+    </div>
+);
 }
 
 export default GetstashedFrontend;
