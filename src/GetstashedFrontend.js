@@ -6,11 +6,11 @@ import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from '
 import { ClipboardIcon, DownloadIcon, AlertTriangleIcon, UploadIcon } from 'lucide-react';
 import './styles.css';
 
-const ONE_SUI = BigInt(100); // 1 SUI = 1,000,000,000 MIST
+const ONE_SUI = BigInt(1000000000); // 1 SUI = 1,000,000,000 MIST
 const MAX_LINKS = 100;
 
 const GetstashedFrontend = () => {
-    // State variables for link generation and claim
+    // State variables for link generation, claiming, and analysis
     const [numLinks, setNumLinks] = useState(1);
     const [amountPerLink, setAmountPerLink] = useState(0.1);
     const [generatedLinks, setGeneratedLinks] = useState([]);
@@ -24,7 +24,6 @@ const GetstashedFrontend = () => {
     const [claimProgress, setClaimProgress] = useState([]);
     const [claimSummary, setClaimSummary] = useState(null);
 
-    // New state variables for analysis
     const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
     const [analysisResults, setAnalysisResults] = useState([]);
     const [analysisSummary, setAnalysisSummary] = useState('');
@@ -74,7 +73,6 @@ const GetstashedFrontend = () => {
         const numLinksToCreate = Math.min(numLinks, MAX_LINKS);
         const totalSuiNeeded = BigInt(Math.floor(amountPerLink * Number(ONE_SUI))) * BigInt(numLinksToCreate);
 
-        // balance is currently in SUI, convert to MIST for comparison
         const currentBalanceInMist = BigInt(Math.floor(Number(balance) * Number(ONE_SUI)));
 
         if (currentBalanceInMist < totalSuiNeeded) {
@@ -176,9 +174,10 @@ const GetstashedFrontend = () => {
             const linkUrl = uploadedLinks[i];
             setClaimProgress(prev => [...prev, `Claiming link ${i + 1}...`]);
             try {
-                const link = await ZkSendLink.fromUrl(linkUrl);
+                // Pass the client so that the link can properly fetch on-chain data.
+                const link = await ZkSendLink.fromUrl(linkUrl, { client });
                 const { balances } = link.assets;
-                const claimResult = await link.claimAssets(currentAccount.address);
+                await link.claimAssets(currentAccount.address);
 
                 const suiBalance = balances.find(b => b.coinType === "0x2::sui::SUI");
                 const suiAmount = suiBalance ? Number(suiBalance.amount) / Number(ONE_SUI) : 0;
@@ -201,11 +200,13 @@ const GetstashedFrontend = () => {
 
         setClaimResults(results);
         setClaimSummary(`Successfully claimed ${successfulClaims} out of ${uploadedLinks.length} links.`);
-        await refreshBalance(); // Refresh balance after claiming
+        await refreshBalance();
         setIsClaimLoading(false);
     };
 
-    // New function to analyze uploaded links
+    // Set the transfer threshold to 0.0001 SUI (100,000 MIST)
+    const TRANSFER_THRESHOLD = BigInt(100_000);
+
     const analyzeUploadedLinks = async () => {
         setIsAnalysisLoading(true);
         setAnalysisResults([]);
@@ -213,12 +214,10 @@ const GetstashedFrontend = () => {
         let oneOrMoreCount = 0;
         let transferredCount = 0;
         const results = [];
-        const TRANSFER_THRESHOLD = BigInt(4_000_000_000); // 4 SUI in MIST
 
         for (let i = 0; i < uploadedLinks.length; i++) {
             const linkUrl = uploadedLinks[i];
             try {
-                // Pass the client so the link can query on-chain data
                 const link = await ZkSendLink.fromUrl(linkUrl, { client });
                 const resultObj = {
                     link: linkUrl,
@@ -245,13 +244,11 @@ const GetstashedFrontend = () => {
                         oneOrMoreCount++;
                     }
 
-                    // Check if any balance change shows a transfer over the threshold (negative amount)
+                    // Flag if any balance change shows a transfer below -TRANSFER_THRESHOLD
                     for (const tx of txBlocks.data) {
                         if (tx.balanceChanges) {
                             const didTransfer = tx.balanceChanges.some((change) => {
-                                // Depending on your data shape, owner might be an object with AddressOwner
                                 const ownerStr = change.owner?.AddressOwner;
-                                // Compare as BigInt
                                 return ownerStr === link.claimedBy && BigInt(change.amount) < -TRANSFER_THRESHOLD;
                             });
                             if (didTransfer) {
@@ -274,7 +271,7 @@ const GetstashedFrontend = () => {
 
         setAnalysisResults(results);
         setAnalysisSummary(
-            `Out of ${uploadedLinks.length} links: ${claimedCount} have been claimed, ${oneOrMoreCount} had ≥ 1 transaction, and ${transferredCount} transferred over 4 SUI.`
+            `Out of ${uploadedLinks.length} links: ${claimedCount} claimed, ${oneOrMoreCount} had ≥ 1 transaction, and ${transferredCount} transferred over 0.0001 SUI.`
         );
         setIsAnalysisLoading(false);
     };
@@ -305,9 +302,7 @@ const GetstashedFrontend = () => {
                         <input
                             type="number"
                             value={numLinks}
-                            onChange={(e) =>
-                                setNumLinks(Math.min(parseInt(e.target.value) || 1, MAX_LINKS))
-                            }
+                            onChange={(e) => setNumLinks(Math.min(parseInt(e.target.value) || 1, MAX_LINKS))}
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                         />
                     </label>
@@ -355,8 +350,7 @@ const GetstashedFrontend = () => {
                             <div className="flex">
                                 <AlertTriangleIcon className="w-5 h-5 mr-2" />
                                 <p>
-                                    Save these links before closing or refreshing the page. This data will be lost
-                                    otherwise.
+                                    Save these links before closing or refreshing the page. This data will be lost otherwise.
                                 </p>
                             </div>
                         </div>
@@ -490,7 +484,7 @@ const GetstashedFrontend = () => {
                                                         </p>
                                                         {result.transferred && (
                                                             <p className="text-sm text-green-600">
-                                                                Transferred over 4 SUI
+                                                                Transferred over 0.0001 SUI
                                                             </p>
                                                         )}
                                                     </>
