@@ -6,7 +6,7 @@ import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from '
 import { ClipboardIcon, DownloadIcon, AlertTriangleIcon, UploadIcon } from 'lucide-react';
 import './styles.css';
 
-const ONE_SUI = BigInt(10000); // 1 SUI = 1,000,000,000 MIST
+const ONE_SUI = BigInt(100); // 1 SUI = 1,000,000,000 MIST
 const MAX_LINKS = 100;
 
 const GetstashedFrontend = () => {
