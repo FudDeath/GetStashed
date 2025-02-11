@@ -10,7 +10,6 @@ const ONE_SUI = BigInt(1000000000); // 1 SUI = 1,000,000,000 MIST
 const MAX_LINKS = 100;
 
 const GetstashedFrontend = () => {
-    // State variables for link generation, claiming, and analysis
     const [numLinks, setNumLinks] = useState(1);
     const [amountPerLink, setAmountPerLink] = useState(0.1);
     const [generatedLinks, setGeneratedLinks] = useState([]);
@@ -23,10 +22,6 @@ const GetstashedFrontend = () => {
     const [claimResults, setClaimResults] = useState([]);
     const [claimProgress, setClaimProgress] = useState([]);
     const [claimSummary, setClaimSummary] = useState(null);
-
-    const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
-    const [analysisResults, setAnalysisResults] = useState([]);
-    const [analysisSummary, setAnalysisSummary] = useState('');
 
     const currentAccount = useCurrentAccount();
     const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
@@ -73,6 +68,7 @@ const GetstashedFrontend = () => {
         const numLinksToCreate = Math.min(numLinks, MAX_LINKS);
         const totalSuiNeeded = BigInt(Math.floor(amountPerLink * Number(ONE_SUI))) * BigInt(numLinksToCreate);
 
+        // balance is currently in SUI, convert to MIST for comparison
         const currentBalanceInMist = BigInt(Math.floor(Number(balance) * Number(ONE_SUI)));
 
         if (currentBalanceInMist < totalSuiNeeded) {
@@ -101,9 +97,7 @@ const GetstashedFrontend = () => {
                 {
                     onSuccess: async (result) => {
                         console.log('Transaction successful', result);
-                        setGeneratedLinks(
-                            links.map((link) => link.getLink().replace('zksend.com', 'getstashed.com'))
-                        );
+                        setGeneratedLinks(links.map((link) => link.getLink().replace('zksend.com', 'getstashed.com')));
                         await refreshBalance();
                     },
                     onError: (err) => {
@@ -148,10 +142,7 @@ const GetstashedFrontend = () => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const content = e.target.result;
-                const links = content
-                    .split('\n')
-                    .map(link => link.trim())
-                    .filter(link => link.length > 0);
+                const links = content.split('\n').map(link => link.trim()).filter(link => link.length > 0);
                 setUploadedLinks(links);
             };
             reader.readAsText(file);
@@ -174,10 +165,9 @@ const GetstashedFrontend = () => {
             const linkUrl = uploadedLinks[i];
             setClaimProgress(prev => [...prev, `Claiming link ${i + 1}...`]);
             try {
-                // Pass the client so that the link can properly fetch on-chain data.
-                const link = await ZkSendLink.fromUrl(linkUrl, { client });
+                const link = await ZkSendLink.fromUrl(linkUrl);
                 const { balances } = link.assets;
-                await link.claimAssets(currentAccount.address);
+                const claimResult = await link.claimAssets(currentAccount.address);
 
                 const suiBalance = balances.find(b => b.coinType === "0x2::sui::SUI");
                 const suiAmount = suiBalance ? Number(suiBalance.amount) / Number(ONE_SUI) : 0;
@@ -200,80 +190,8 @@ const GetstashedFrontend = () => {
 
         setClaimResults(results);
         setClaimSummary(`Successfully claimed ${successfulClaims} out of ${uploadedLinks.length} links.`);
-        await refreshBalance();
+        await refreshBalance(); // Refresh balance after claiming
         setIsClaimLoading(false);
-    };
-
-    // Set the transfer threshold to 0.0001 SUI (100,000 MIST)
-    const TRANSFER_THRESHOLD = BigInt(100_000);
-
-    const analyzeUploadedLinks = async () => {
-        setIsAnalysisLoading(true);
-        setAnalysisResults([]);
-        let claimedCount = 0;
-        let oneOrMoreCount = 0;
-        let transferredCount = 0;
-        const results = [];
-
-        for (let i = 0; i < uploadedLinks.length; i++) {
-            const linkUrl = uploadedLinks[i];
-            try {
-                const link = await ZkSendLink.fromUrl(linkUrl, { client });
-                const resultObj = {
-                    link: linkUrl,
-                    claimed: false,
-                    claimedBy: null,
-                    txBlocks: [],
-                    transferred: false,
-                };
-
-                if (link.claimedBy) {
-                    resultObj.claimed = true;
-                    resultObj.claimedBy = link.claimedBy;
-                    claimedCount++;
-
-                    // Query recent transactions for the claimed address
-                    const txBlocks = await client.queryTransactionBlocks({
-                        limit: 5,
-                        filter: { FromAddress: link.claimedBy },
-                        options: { showBalanceChanges: true },
-                    });
-                    resultObj.txBlocks = txBlocks.data || [];
-
-                    if (txBlocks.data && txBlocks.data.length > 0) {
-                        oneOrMoreCount++;
-                    }
-
-                    // Flag if any balance change shows a transfer below -TRANSFER_THRESHOLD
-                    for (const tx of txBlocks.data) {
-                        if (tx.balanceChanges) {
-                            const didTransfer = tx.balanceChanges.some((change) => {
-                                const ownerStr = change.owner?.AddressOwner;
-                                return ownerStr === link.claimedBy && BigInt(change.amount) < -TRANSFER_THRESHOLD;
-                            });
-                            if (didTransfer) {
-                                resultObj.transferred = true;
-                                transferredCount++;
-                                break;
-                            }
-                        }
-                    }
-                }
-                results.push(resultObj);
-            } catch (error) {
-                console.error(`Error analyzing link ${linkUrl}:`, error);
-                results.push({
-                    link: linkUrl,
-                    error: error.message || "Unknown error",
-                });
-            }
-        }
-
-        setAnalysisResults(results);
-        setAnalysisSummary(
-            `Out of ${uploadedLinks.length} links: ${claimedCount} claimed, ${oneOrMoreCount} had ≥ 1 transaction, and ${transferredCount} transferred over 0.0001 SUI.`
-        );
-        setIsAnalysisLoading(false);
     };
 
     return (
@@ -287,12 +205,8 @@ const GetstashedFrontend = () => {
 
                 {currentAccount && (
                     <div className="mb-6 text-center">
-                        <p className="text-sm text-gray-600">
-                            Connected: 0x{currentAccount.address.slice(2, 6)}...{currentAccount.address.slice(-4)}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                            Balance: {balance !== null ? `${balance.toFixed(4)} SUI` : 'Loading...'}
-                        </p>
+                        <p className="text-sm text-gray-600">Connected: 0x{currentAccount.address.slice(2, 6)}...{currentAccount.address.slice(-4)}</p>
+                        <p className="text-sm text-gray-600">Balance: {balance !== null ? `${balance.toFixed(4)} SUI` : 'Loading...'}</p>
                     </div>
                 )}
 
@@ -333,47 +247,31 @@ const GetstashedFrontend = () => {
                     <div className="mt-8">
                         <h2 className="text-xl font-semibold mb-4">Generated Links</h2>
                         <div className="flex space-x-2 mb-4">
-                            <button
-                                onClick={copyAllLinks}
-                                className="flex items-center bg-green-500 text-white py-2 px-4 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
-                            >
+                            <button onClick={copyAllLinks} className="flex items-center bg-green-500 text-white py-2 px-4 rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
                                 <ClipboardIcon className="w-5 h-5 mr-2" /> Copy All
                             </button>
-                            <button
-                                onClick={downloadLinks}
-                                className="flex items-center bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
-                            >
+                            <button onClick={downloadLinks} className="flex items-center bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
                                 <DownloadIcon className="w-5 h-5 mr-2" /> Download
                             </button>
                         </div>
                         <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4">
                             <div className="flex">
                                 <AlertTriangleIcon className="w-5 h-5 mr-2" />
-                                <p>
-                                    Save these links before closing or refreshing the page. This data will be lost otherwise.
-                                </p>
+                                <p>Save these links before closing or refreshing the page. This data will be lost otherwise.</p>
                             </div>
                         </div>
                         <ul className="list-disc pl-5 space-y-1">
                             {generatedLinks.map((link, index) => (
                                 <li key={index}>
-                                    <a
-                                        href={link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-500 hover:underline"
-                                    >
-                                        {link}
-                                    </a>
+                                    <a href={link} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">{link}</a>
                                 </li>
                             ))}
                         </ul>
                     </div>
                 )}
 
-                {/* File Upload Section */}
                 <div className="mt-8">
-                    <h2 className="text-xl font-semibold mb-4">Upload Links File</h2>
+                    <h2 className="text-xl font-semibold mb-4">Mass Claim Assets</h2>
                     <div className="flex items-center space-x-2 mb-4">
                         <input
                             type="file"
@@ -386,16 +284,6 @@ const GetstashedFrontend = () => {
                                 file:bg-blue-50 file:text-blue-700
                                 hover:file:bg-blue-100"
                         />
-                    </div>
-                    {uploadedLinks.length > 0 && (
-                        <p className="text-sm text-gray-600">{uploadedLinks.length} links loaded</p>
-                    )}
-                </div>
-
-                {/* Mass Claim Assets Section */}
-                <div className="mt-8">
-                    <h2 className="text-xl font-semibold mb-4">Mass Claim Assets</h2>
-                    <div className="flex items-center space-x-2 mb-4">
                         <button
                             onClick={massClaimAssets}
                             disabled={isClaimLoading || !currentAccount || uploadedLinks.length === 0}
@@ -404,101 +292,48 @@ const GetstashedFrontend = () => {
                             <UploadIcon className="w-5 h-5 mr-2" /> {isClaimLoading ? 'Claiming...' : 'Claim Assets'}
                         </button>
                     </div>
-                    {isClaimLoading && (
-                        <div className="mt-4">
-                            <p className="text-sm font-semibold text-gray-700 mb-2">Claiming in progress...</p>
-                            <div className="bg-gray-100 p-4 rounded-md max-h-60 overflow-y-auto">
-                                {claimProgress.map((progress, index) => (
-                                    <p key={index} className="text-sm text-gray-700">
-                                        {progress}
-                                    </p>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                    {claimSummary && (
-                        <div className="mt-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700">
-                            <p className="font-semibold">{claimSummary}</p>
-                        </div>
-                    )}
-                    {claimResults.length > 0 && (
-                        <div className="mt-8">
-                            <h3 className="text-lg font-semibold mb-4">Claim Results</h3>
-                            <ul className="space-y-2">
-                                {claimResults.map((result, index) => (
-                                    <li key={index} className="bg-gray-50 p-3 rounded-md">
-                                        <p className="text-sm text-gray-600">
-                                            Link {index + 1}: {result.link}
-                                        </p>
-                                        {result.error ? (
-                                            <p className="text-sm text-red-500">Error: {result.error}</p>
-                                        ) : (
-                                            <p className="text-sm font-semibold text-green-600">
-                                                Claimed: {result.claimedAmount} SUI
-                                            </p>
-                                        )}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
                 </div>
 
-                {/* Analysis Section */}
-                <div className="mt-8">
-                    <h2 className="text-xl font-semibold mb-4">Analyze Uploaded Links</h2>
-                    <div className="flex items-center space-x-2 mb-4">
-                        <button
-                            onClick={analyzeUploadedLinks}
-                            disabled={isAnalysisLoading || uploadedLinks.length === 0}
-                            className="flex items-center bg-purple-500 text-white py-2 px-4 rounded-md hover:bg-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                        >
-                            {isAnalysisLoading ? 'Analyzing...' : 'Analyze Links'}
-                        </button>
+                {uploadedLinks.length > 0 && (
+                    <div className="mt-4">
+                        <p className="text-sm text-gray-600">{uploadedLinks.length} links loaded</p>
                     </div>
-                    {analysisSummary && (
-                        <div className="mt-4 p-4 bg-blue-100 border-l-4 border-blue-500 text-blue-700">
-                            <p className="font-semibold">{analysisSummary}</p>
+                )}
+
+                {isClaimLoading && (
+                    <div className="mt-4">
+                        <p className="text-sm font-semibold text-gray-700 mb-2">Claiming in progress...</p>
+                        <div className="bg-gray-100 p-4 rounded-md max-h-60 overflow-y-auto">
+                            {claimProgress.map((progress, index) => (
+                                <p key={index} className="text-sm text-gray-700">{progress}</p>
+                            ))}
                         </div>
-                    )}
-                    {analysisResults.length > 0 && (
-                        <div className="mt-8">
-                            <h3 className="text-lg font-semibold mb-4">Analysis Results</h3>
-                            <ul className="space-y-2">
-                                {analysisResults.map((result, index) => (
-                                    <li key={index} className="bg-gray-50 p-3 rounded-md">
-                                        <p className="text-sm text-gray-600">
-                                            Link {index + 1}: {result.link}
-                                        </p>
-                                        {result.error ? (
-                                            <p className="text-sm text-red-500">Error: {result.error}</p>
-                                        ) : (
-                                            <>
-                                                {result.claimed ? (
-                                                    <>
-                                                        <p className="text-sm text-green-600">
-                                                            Claimed by: {result.claimedBy}
-                                                        </p>
-                                                        <p className="text-sm text-gray-600">
-                                                            Transactions: {result.txBlocks ? result.txBlocks.length : 0}
-                                                        </p>
-                                                        {result.transferred && (
-                                                            <p className="text-sm text-green-600">
-                                                                Transferred over 0.0001 SUI
-                                                            </p>
-                                                        )}
-                                                    </>
-                                                ) : (
-                                                    <p className="text-sm text-gray-600">Not claimed</p>
-                                                )}
-                                            </>
-                                        )}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-                </div>
+                    </div>
+                )}
+
+                {claimSummary && (
+                    <div className="mt-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700">
+                        <p className="font-semibold">{claimSummary}</p>
+                    </div>
+                )}
+
+                {claimResults.length > 0 && (
+                    <div className="mt-8">
+                        <h3 className="text-lg font-semibold mb-4">Claim Results</h3>
+                        <ul className="space-y-2">
+                            {claimResults.map((result, index) => (
+                                <li key={index} className="bg-gray-50 p-3 rounded-md">
+                                    <p className="text-sm text-gray-600">Link {index + 1}: {result.link}</p>
+                                    {result.error ? (
+                                        <p className="text-sm text-red-500">Error: {result.error}</p>
+                                    ) : (
+                                        <p className="text-sm font-semibold text-green-600">Claimed: {result.claimedAmount} SUI</p>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
             </div>
         </div>
     );
