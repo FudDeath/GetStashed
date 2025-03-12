@@ -166,6 +166,11 @@ const GetstashedFrontend = () => {
             setClaimProgress(prev => [...prev, `Claiming link ${i + 1}...`]);
             try {
                 const link = await ZkSendLink.fromUrl(linkUrl);
+                console.log("Full link object:", link); // Print entire link object
+                console.log("Assets in link:", link.assets); // Print assets object
+            
+                const { balances } = link.assets || {};
+                console.log("Balances array:", balances); // Print balances array
                 const { balances } = link.assets;
                 const claimResult = await link.claimAssets(currentAccount.address);
 
