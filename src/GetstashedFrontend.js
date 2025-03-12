@@ -173,7 +173,7 @@ const GetstashedFrontend = () => {
                 console.log("Balances array:", balances); // Print balances array
                 const claimResult = await link.claimAssets(currentAccount.address);
 
-                const suiBalance = balances.find(b => b.coinType === "0x2::sui::SUI");
+                const suiBalance = balances.find(b => b.coinType === "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI");
                 const suiAmount = suiBalance ? Number(suiBalance.amount) / Number(ONE_SUI) : 0;
 
                 results.push({
